@@ -1,0 +1,145 @@
+{% macro form_context() -%}
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <input type="hidden" name="start_date" value="{{ start_date }}">
+  <input type="hidden" name="end_date" value="{{ end_date }}">
+  <input type="hidden" name="report_employee_id" value="{{ selected_employee_id or '' }}">
+{%- endmacro %}
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <meta name="description" content="Локальный учёт рабочего времени команды: сотрудники, задачи и отчёты.">
+  <title>Рабочее время — учёт задач команды</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <script src="{{ url_for('static', filename='timer.js') }}" defer></script>
+</head>
+<body data-server-now-us="{{ server_now_us }}">
+  <a class="skip-link" href="#main">Перейти к содержимому</a>
+  <div class="app-shell">
+    <header class="site-header">
+      <a class="brand" href="{{ url_for('index') }}" aria-label="Рабочее время — главная">
+        <span class="brand-mark" aria-hidden="true"><span></span><span></span><span></span></span>
+        <span>Рабочее время<span class="brand-caption">УЧЁТ ЗАДАЧ КОМАНДЫ</span></span>
+      </a>
+      <nav class="header-nav" aria-label="Разделы страницы">
+        <a href="#workspace">Таймеры</a>
+        <a href="#report">Отчёт</a>
+      </nav>
+      <span class="local-badge"><span aria-hidden="true"></span>Локальное приложение</span>
+    </header>
+
+    <main id="main">
+      <section class="page-intro" aria-labelledby="page-title">
+        <div>
+          <p class="eyebrow">МЕНЬШЕ РУТИНЫ · БОЛЬШЕ ЯСНОСТИ</p>
+          <h1 id="page-title">Каждая задача.<br class="mobile-break"> Всё время на виду.</h1>
+          <p class="intro-copy">Запускайте таймеры, сохраняйте задачи и смотрите, как прошёл рабочий день.</p>
+        </div>
+        <div class="timezone-note"><span class="timezone-icon" aria-hidden="true">◷</span><span>Временная зона<strong>{{ timezone_name }}</strong></span></div>
+      </section>
+
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+          <div class="notifications" aria-live="polite">
+            {% for category, message in messages %}
+              <div class="notice notice-{{ category }}" role="{{ 'alert' if category == 'error' else 'status' }}"><span aria-hidden="true">{{ '!' if category == 'error' else '✓' }}</span><p>{{ message }}</p></div>
+            {% endfor %}
+          </div>
+        {% endif %}
+      {% endwith %}
+
+      <section class="overview" aria-label="Сводка">
+        <div class="overview-item"><span>В команде</span><strong>{{ employees|length }} <small>сотрудников</small></strong></div>
+        <div class="overview-item"><span><i class="status-dot" aria-hidden="true"></i> Сейчас в работе</span><strong>{{ active_entries|length }} <small>задач</small></strong></div>
+        <div class="overview-item"><span>Завершённое время за период</span><strong class="monospace">{{ total_us|duration }}</strong></div>
+      </section>
+
+      <div class="workspace-grid" id="workspace">
+        <section class="panel team-panel" aria-labelledby="team-title">
+          <div class="panel-heading"><div><p class="section-step">01 / КОМАНДА</p><h2 id="team-title">Сотрудники</h2></div><span class="count-badge">{{ employees|length }}</span></div>
+          <form action="{{ url_for('add_employee') }}" method="post" class="employee-form">
+            {{ form_context() }}
+            <label for="employee-name">Имя сотрудника</label>
+            <div class="inline-input"><input id="employee-name" name="name" type="text" required maxlength="100" placeholder="Например, Алексей Тестов" autocomplete="off"><button class="button button-square" type="submit" aria-label="Добавить сотрудника" title="Добавить сотрудника">+</button></div>
+            <p class="field-hint">До 100 символов. Только вымышленные данные.</p>
+          </form>
+          {% if employees %}
+            <p class="list-caption">Нажмите на имя, чтобы открыть отчёт</p>
+            <ul class="employee-list">
+              {% for employee in employees %}
+                <li><a class="employee-link {{ 'is-selected' if selected_employee_id == employee.id else '' }}" href="{{ url_for('index', employee_id=employee.id, start_date=start_date, end_date=end_date) }}#report" {% if selected_employee_id == employee.id %}aria-current="true"{% endif %}><span class="avatar" aria-hidden="true">{{ employee.name[:1]|upper }}</span><span class="employee-identity"><strong>{{ employee.name }}</strong><small>Сотрудник #{{ employee.id }}</small></span><span class="link-arrow" aria-hidden="true">↗</span></a></li>
+              {% endfor %}
+            </ul>
+          {% else %}
+            <div class="small-empty"><span class="empty-symbol" aria-hidden="true">+</span><h3>Начнём с команды</h3><p>Добавьте первого сотрудника,<br>чтобы запустить таймер.</p></div>
+          {% endif %}
+        </section>
+
+        <div class="task-column">
+          <section class="panel timer-panel" aria-labelledby="timer-title">
+            <div class="panel-heading"><div><p class="section-step">02 / НОВАЯ ЗАДАЧА</p><h2 id="timer-title">Начать отсчёт</h2></div><span class="panel-icon" aria-hidden="true">◴</span></div>
+            <form action="{{ url_for('start_timer') }}" method="post" class="timer-form">
+              {{ form_context() }}
+              <div class="timer-fields">
+                <div><label for="timer-employee">Сотрудник</label><select id="timer-employee" name="employee_id" required {% if not employees %}disabled{% endif %}><option value="" {% if not selected_employee_id %}selected{% endif %}>Выберите сотрудника</option>{% for employee in employees %}<option value="{{ employee.id }}" {% if selected_employee_id == employee.id %}selected{% endif %}>{{ employee.name }} · #{{ employee.id }}</option>{% endfor %}</select></div>
+                <div><label for="task-description">Над чем работаем?</label><textarea id="task-description" name="description" rows="3" required maxlength="1000" placeholder="Например, подготовка макета главной страницы" {% if not employees %}disabled{% endif %}></textarea></div>
+              </div>
+              <div class="timer-form-footer"><p class="field-hint">Один активный таймер на сотрудника.<br>Описание задачи — до 1000 символов.</p><button class="button button-primary" type="submit" {% if not employees %}disabled{% endif %}><span class="play-icon" aria-hidden="true"></span>Начать</button></div>
+            </form>
+          </section>
+
+          <section class="active-section" aria-labelledby="active-title">
+            <div class="active-heading"><h2 id="active-title"><i class="status-dot" aria-hidden="true"></i>Активные задачи <span>{{ active_entries|length }}</span></h2><span class="section-caption">Сохраняются при перезапуске</span></div>
+            {% if active_entries %}
+              <div class="active-list">
+                {% for entry in active_entries %}
+                  <article class="active-card">
+                    <div class="active-task"><span class="task-owner">{{ entry.employee_name }} <small>#{{ entry.employee_id }}</small></span><h3>{{ entry.description }}</h3><p>Начало: <time datetime="{{ entry.started_at|iso_utc }}">{{ entry.started_at|local_datetime }}</time></p></div>
+                    <div class="active-controls"><output class="live-timer monospace" data-started-at-us="{{ entry.started_at }}" aria-label="Прошедшее время">{{ entry.elapsed_us|duration }}</output><form action="{{ url_for('stop_timer', entry_id=entry.id) }}" method="post">{{ form_context() }}<button class="button button-stop" type="submit" aria-label="Остановить задачу сотрудника {{ entry.employee_name }}"><span class="stop-icon" aria-hidden="true"></span>Остановить</button></form></div>
+                  </article>
+                {% endfor %}
+              </div>
+            {% else %}
+              <div class="active-empty"><span class="idle-clock" aria-hidden="true">◷</span><div><strong>Сейчас таймеры на паузе</strong><p>Начните задачу — здесь появится живой счётчик.</p></div></div>
+            {% endif %}
+            <noscript><p class="field-hint">JavaScript отключён: таймер обновится после перезагрузки страницы. Запуск и остановка работают.</p></noscript>
+          </section>
+        </div>
+      </div>
+
+      <section class="report-section" id="report" aria-labelledby="report-title">
+        <div class="report-heading"><div><p class="section-step">03 / РЕЗУЛЬТАТЫ</p><h2 id="report-title">Отчёт по времени</h2><p>Завершённые задачи и время за выбранные дни.</p></div><a class="text-link" href="{{ url_for('index', start_date=today, end_date=today, employee_id=selected_employee_id or '') }}#report">Сегодня <span aria-hidden="true">↗</span></a></div>
+        <div class="panel report-panel">
+          <form action="{{ url_for('index') }}#report" method="get" class="report-filter">
+            <div><label for="start-date">С даты</label><input type="date" id="start-date" name="start_date" value="{{ start_date }}" required></div>
+            <div><label for="end-date">По дату включительно</label><input type="date" id="end-date" name="end_date" value="{{ end_date }}" required></div>
+            <div class="filter-employee"><label for="report-employee">Сотрудник</label><select id="report-employee" name="employee_id"><option value="">Все сотрудники</option>{% for employee in employees %}<option value="{{ employee.id }}" {% if selected_employee_id == employee.id %}selected{% endif %}>{{ employee.name }} · #{{ employee.id }}</option>{% endfor %}</select></div>
+            <button class="button button-dark" type="submit">Показать отчёт</button>
+          </form>
+          <p class="report-note"><span aria-hidden="true">ⓘ</span>Активные задачи попадут в итог после остановки. Учитывается только часть задачи внутри периода. Зона: {{ timezone_name }}.</p>
+          {% if report_error %}
+            <div class="report-error" role="alert"><strong>Проверьте фильтр</strong><p>{{ report_error }}</p></div>
+          {% else %}
+            <div class="report-summary"><div><span class="summary-label">Всего за период</span><strong class="monospace">{{ total_us|duration }}</strong></div><span class="record-count">Завершённых записей: <strong>{{ report_count }}</strong></span></div>
+            {% if totals %}
+              <div class="employee-totals" aria-label="Итоги по сотрудникам">
+                {% for employee in totals %}<div class="employee-total"><span>{{ employee.name }} <small>#{{ employee.id }}</small></span><strong class="monospace">{{ employee.duration_us|duration }}</strong><small>Записей: {{ employee.entry_count }}</small></div>{% endfor %}
+              </div>
+            {% endif %}
+            {% if report_entries %}
+              <div class="table-wrap" tabindex="0" role="region" aria-label="Записи рабочего времени, таблица прокручивается по горизонтали">
+                <table><caption class="sr-only">Завершённые записи за выбранный период; длительность ограничена границами периода</caption><thead><tr><th scope="col">Сотрудник / задача</th><th scope="col">Начало</th><th scope="col">Окончание</th><th scope="col" class="duration-cell">Время в периоде</th></tr></thead><tbody>{% for entry in report_entries %}<tr><td class="task-cell"><strong>{{ entry.employee_name }} <small>#{{ entry.employee_id }}</small></strong><p>{{ entry.description }}</p></td><td><time datetime="{{ entry.started_at|iso_utc }}">{{ entry.started_at|local_datetime }}</time></td><td><time datetime="{{ entry.ended_at|iso_utc }}">{{ entry.ended_at|local_datetime }}</time></td><td class="duration-cell monospace">{{ entry.overlap_us|duration }}</td></tr>{% endfor %}</tbody></table>
+              </div>
+            {% else %}
+              <div class="report-empty"><span class="empty-document" aria-hidden="true">≡</span><h3>За выбранный период записей нет</h3><p>Попробуйте другой период или завершите активную задачу.<br>Итоговое время: <strong class="monospace">00:00:00</strong>.</p></div>
+            {% endif %}
+          {% endif %}
+        </div>
+      </section>
+    </main>
+    <footer class="site-footer"><span>Рабочее время <span aria-hidden="true">/</span> Учёт без лишнего</span><p>Данные сохраняются в SQLite на этом компьютере.</p></footer>
+  </div>
+</body>
+</html>

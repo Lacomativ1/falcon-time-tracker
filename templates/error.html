@@ -1,0 +1,5 @@
+<!doctype html>
+<html lang="ru">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>{{ error_code }} — Рабочее время</title><link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}"></head>
+<body><main class="error-page"><a class="error-brand" href="{{ url_for('index') }}">Рабочее время</a><section class="panel"><p class="eyebrow">ОШИБКА {{ error_code }}</p><h1>{{ error_title }}</h1><p>{{ error_message }}</p><a class="button button-primary" href="{{ url_for('index') }}">На главную</a></section></main></body>
+</html>
